@@ -1,0 +1,129 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+// Конфигурация Prisma
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+// Настройка подключения к PostgreSQL базе данных
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Модель пользователя системы
+// Содержит основную информацию о пользователе и его связи с другими сущностями
+model User {
+  userId            Int     @id @default(autoincrement())  // Уникальный идентификатор пользователя
+  cognitoId         String  @unique                        // ID пользователя в системе AWS Cognito
+  username          String  @unique                        // Уникальное имя пользователя
+  profilePictureUrl String?                               // Ссылка на аватар пользователя
+  teamId            Int?                                  // Связь с командой
+
+  // Связи с другими моделями
+  authoredTasks   Task[]           @relation("TaskAuthor")    // Задачи, созданные пользователем
+  assignedTasks   Task[]           @relation("TaskAssignee")  // Задачи, назначенные пользователю
+  taskAssignments TaskAssignment[]                           // Назначения на задачи
+  attachments     Attachment[]                               // Загруженные файлы
+  comments        Comment[]                                  // Комментарии пользователя
+  team            Team?            @relation(fields: [teamId], references: [id])  // Команда пользователя
+}
+
+// Модель команды
+// Представляет собой группу пользователей, работающих над проектами
+model Team {
+  id                   Int           @id @default(autoincrement())  // Уникальный идентификатор команды
+  teamName             String                                       // Название команды
+  productOwnerUserId   Int?                                        // ID владельца продукта
+  projectManagerUserId Int?                                        // ID проектного менеджера
+  projectTeams         ProjectTeam[]                               // Связь с проектами
+  user                 User[]                                      // Участники команды
+}
+
+// Модель проекта
+// Содержит информацию о проекте и его временных рамках
+model Project {
+  id           Int           @id @default(autoincrement())  // Уникальный идентификатор проекта
+  name         String                                       // Название проекта
+  description  String?                                      // Описание проекта
+  startDate    DateTime?                                    // Дата начала
+  endDate      DateTime?                                    // Дата окончания
+  tasks        Task[]                                       // Задачи проекта
+  projectTeams ProjectTeam[]                               // Команды, работающие над проектом
+}
+
+// Связующая модель между проектами и командами
+// Позволяет организовать связь многие-ко-многим
+model ProjectTeam {
+  id        Int     @id @default(autoincrement())
+  teamId    Int
+  projectId Int
+  team      Team    @relation(fields: [teamId], references: [id])
+  project   Project @relation(fields: [projectId], references: [id])
+}
+
+// Модель задачи
+// Основная сущность для управления работой в проекте
+model Task {
+  id             Int       @id @default(autoincrement())  // Уникальный идентификатор задачи
+  title          String                                   // Заголовок задачи
+  description    String?                                  // Описание задачи
+  status         String?                                  // Статус выполнения
+  priority       String?                                  // Приоритет задачи
+  tags           String?                                  // Теги для категоризации
+  startDate      DateTime?                                // Дата начала
+  dueDate        DateTime?                                // Срок выполнения
+  points         Int?                                     // Story points
+  projectId      Int                                      // Связь с проектом
+  authorUserId   Int                                      // Автор задачи
+  assignedUserId Int?                                     // Исполнитель задачи
+
+  // Связи с другими моделями
+  project         Project          @relation(fields: [projectId], references: [id])
+  author          User             @relation("TaskAuthor", fields: [authorUserId], references: [userId])
+  assignee        User?            @relation("TaskAssignee", fields: [assignedUserId], references: [userId])
+  taskAssignments TaskAssignment[]
+  attachments     Attachment[]
+  comments        Comment[]
+}
+
+// Модель назначения задачи
+// Позволяет назначать несколько пользователей на одну задачу
+model TaskAssignment {
+  id     Int @id @default(autoincrement())
+  userId Int
+  taskId Int
+
+  user User @relation(fields: [userId], references: [userId])
+  task Task @relation(fields: [taskId], references: [id])
+}
+
+// Модель вложений
+// Хранит информацию о файлах, прикрепленных к задачам
+model Attachment {
+  id           Int     @id @default(autoincrement())  // Уникальный идентификатор вложения
+  fileURL      String                                 // URL файла
+  fileName     String?                                // Имя файла
+  taskId       Int                                    // Связь с задачей
+  uploadedById Int                                    // Кто загрузил файл
+
+  task       Task @relation(fields: [taskId], references: [id])
+  uploadedBy User @relation(fields: [uploadedById], references: [userId])
+}
+
+// Модель комментариев
+// Позволяет пользователям обсуждать задачи
+model Comment {
+  id     Int    @id @default(autoincrement())  // Уникальный идентификатор комментария
+  text   String                                // Текст комментария
+  taskId Int                                   // Связь с задачей
+  userId Int                                   // Автор комментария
+
+  task Task @relation(fields: [taskId], references: [id])
+  user User @relation(fields: [userId], references: [userId])
+}
